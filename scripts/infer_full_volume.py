@@ -53,6 +53,8 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, default=0.5)
     parser.add_argument("--patch", type=int, default=96)
     parser.add_argument("--overlap", type=int, default=16)
+    parser.add_argument("--min-size", type=int, default=100,
+                        help="Remove segments smaller than this many voxels (default 100)")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -211,6 +213,28 @@ def main() -> None:
     seg_arr.attrs.update({"resolution_nm": res_nm, "axes": ["x", "y", "z"],
                           "threshold": args.threshold})
     log.info("Saved pred_seg to zarr")
+
+    # Size-filtered segmentation
+    log.info("Size-filtering segments (min_size=%d voxels)...", args.min_size)
+    seg_ids, counts = np.unique(seg, return_counts=True)
+    small_mask_ids = seg_ids[(counts < args.min_size) & (seg_ids != 0)]
+    seg_filtered = seg.copy()
+    if len(small_mask_ids):
+        remove_mask = np.isin(seg, small_mask_ids)
+        seg_filtered[remove_mask] = 0
+    n_kept = int(((counts >= args.min_size) & (seg_ids != 0)).sum())
+    log.info("Kept %d / %d segments (removed %d small)", n_kept, n_segs, len(small_mask_ids))
+
+    if "pred_seg_filtered" in store:
+        del store["pred_seg_filtered"]
+    filt_arr = store.create_array(
+        "pred_seg_filtered", shape=seg_filtered.shape, chunks=(64, 64, 64),
+        dtype=np.uint64, compressors=blosc,
+    )
+    filt_arr[:] = seg_filtered
+    filt_arr.attrs.update({"resolution_nm": res_nm, "axes": ["x", "y", "z"],
+                           "threshold": args.threshold, "min_size": args.min_size})
+    log.info("Saved pred_seg_filtered to zarr")
     log.info("Done. Run: python scripts/view_neuroglancer.py --tunnel --seg --pred-seg")
 
 

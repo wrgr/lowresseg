@@ -49,6 +49,7 @@ def main() -> None:
     parser.add_argument("--seg", action="store_true", help="Show ground-truth seg layer")
     parser.add_argument("--aff", action="store_true", help="Show predicted affinity layer (if present)")
     parser.add_argument("--pred-seg", action="store_true", help="Show predicted segmentation (if present)")
+    parser.add_argument("--pred-seg-filtered", action="store_true", help="Show size-filtered predicted seg (if present)")
     parser.add_argument("--port", type=int, default=9090)
     parser.add_argument("--tunnel", action="store_true",
                         help="Open a public ngrok tunnel (needed when running remotely)")
@@ -82,6 +83,10 @@ def main() -> None:
         if args.pred_seg and "pred_seg" in z:
             print("Loading predicted seg...")
             add_zarr_layer(txn, "seg (predicted)", z["pred_seg"], "segmentation", res_nm=res_em)
+
+        if args.pred_seg_filtered and "pred_seg_filtered" in z:
+            print("Loading size-filtered predicted seg...")
+            add_zarr_layer(txn, "seg (predicted, filtered)", z["pred_seg_filtered"], "segmentation", res_nm=res_em)
 
         if args.aff and "affinities" in z:
             aff_data = np.array(z["affinities"])  # (3, X, Y, Z)
