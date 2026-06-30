@@ -1,0 +1,46 @@
+defaults:
+  - _self_
+  - data: microns
+  - model: unet_affinity
+
+# Training
+batch_size: 2
+num_workers: 4
+max_steps: 200_000
+val_interval: 1000
+checkpoint_interval: 5000
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 3e-4
+  weight_decay: 1e-5
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  T_max: 200_000
+  eta_min: 1e-6
+
+# Loss: balanced BCE on affinities (mask boundary voxels)
+loss:
+  balance_weights: true
+  # weight positives higher — affinities are sparse at boundaries
+  pos_weight: 3.0
+
+# Augmentation (all applied in 3D)
+augment:
+  flip_prob: 0.5
+  rot90_prob: 0.5
+  elastic:
+    prob: 0.3
+    sigma_range: [3.0, 7.0]
+    magnitude_range: [50.0, 150.0]
+  intensity:
+    gamma_range: [0.75, 1.5]
+    scale_range: [0.9, 1.1]
+    shift_range: [-0.1, 0.1]
+    blur_sigma: 1.0
+    noise_std: 0.02
+
+# Output
+output_dir: "runs/${now:%Y%m%d_%H%M%S}"
+resume: null
