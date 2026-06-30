@@ -44,9 +44,15 @@ class ZarrAffinityDataset(Dataset):
 
         p = self.patch_size
         sx, sy, sz = self.em.shape
-        xi = random.randint(0, max(sx - p, 0))
-        yi = random.randint(0, max(sy - p, 0))
-        zi = random.randint(0, max(sz - p, 0))
+
+        # Retry until we get a patch with enough labelled foreground (>5%)
+        for _ in range(50):
+            xi = random.randint(0, max(sx - p, 0))
+            yi = random.randint(0, max(sy - p, 0))
+            zi = random.randint(0, max(sz - p, 0))
+            seg_p = self.seg[xi:xi+p, yi:yi+p, zi:zi+p]
+            if (seg_p > 0).mean() > 0.05:
+                break
 
         em_p = self.em[xi:xi+p, yi:yi+p, zi:zi+p].astype(np.float32)
         seg_p = self.seg[xi:xi+p, yi:yi+p, zi:zi+p]
