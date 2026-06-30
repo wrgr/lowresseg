@@ -198,17 +198,19 @@ def main() -> None:
 
     log.info("Inference done in %.1f min", (time.time() - t0) / 60)
 
+    # Free EM and inference buffers before agglomeration to reclaim ~1.5 GB RAM.
+    del em, aff_buf, wgt_buf
+
     # Agglomerate: threshold mean affinity → binary mask → connected components.
-    # Full MST is infeasible at this scale (~1B voxels, ~3B edges).
-    # CC on thresholded affinities is RAM-efficient and fast enough for a first pass.
     log.info("Agglomerating via threshold+CC (threshold=%.2f)...", args.threshold)
     t0 = time.time()
     from scipy import ndimage as ndi
 
-    # Load one channel at a time to compute mean affinity (stays in ~4 GB per channel)
+    # Accumulate mean affinity one channel at a time to cap peak RAM.
+    # Each channel ~3.8 GB; sum accumulates in-place then divide — peak ~7.6 GB total.
     log.info("  computing mean affinity across channels...")
-    mean_aff = np.zeros((sx, sy, sz), dtype=np.float32)
-    for c in range(3):
+    mean_aff = np.array(aff_arr[0], dtype=np.float32)
+    for c in range(1, 3):
         mean_aff += np.array(aff_arr[c])
     mean_aff /= 3.0
 
