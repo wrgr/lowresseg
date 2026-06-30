@@ -29,9 +29,9 @@ class ZarrAffinityDataset(Dataset):
     def __init__(self, zarr_path: str, patch_size: int = 64, n_samples: int = 500) -> None:
         import zarr
 
-        store = zarr.open(zarr_path, mode="r")
-        self.em = store["em"][:]
-        self.seg = store["seg"][:]
+        store = zarr.open_group(zarr_path, mode="r")
+        self.em = np.array(store["em"]).astype(np.float32)
+        self.seg = np.array(store["seg"]).astype(np.uint64)
         self.patch_size = patch_size
         self.n_samples = n_samples
         log.info("Loaded em=%s seg=%s", self.em.shape, self.seg.shape)
@@ -53,7 +53,7 @@ class ZarrAffinityDataset(Dataset):
 
         lo, hi = np.percentile(em_p, [1, 99])
         em_p = np.clip(em_p, lo, hi)
-        em_p = (em_p - lo) / (hi - lo + 1e-6)
+        em_p = ((em_p - lo) / (hi - lo + 1e-6)).astype(np.float32)
 
         affs = seg_to_affinities(seg_p)
         weights = (seg_p > 0).astype(np.float32)

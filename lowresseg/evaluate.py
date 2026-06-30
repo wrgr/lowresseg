@@ -74,10 +74,10 @@ def main() -> None:
     args = parser.parse_args()
 
     log.info("Loading predicted segmentation from %s", args.seg_zarr)
-    seg = zarr.open(args.seg_zarr, mode="r")[args.seg_dataset][:]
+    seg = zarr.open_group(args.seg_zarr, mode="r")[args.seg_dataset][:]
 
     log.info("Loading ground truth from %s", args.gt_zarr)
-    gt = zarr.open(args.gt_zarr, mode="r")[args.gt_dataset][:]
+    gt = zarr.open_group(args.gt_zarr, mode="r")[args.gt_dataset][:]
 
     if seg.shape != gt.shape:
         raise ValueError(f"Shape mismatch: seg={seg.shape} vs gt={gt.shape}")

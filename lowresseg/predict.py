@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import zarr
+from zarr.codecs import BloscCodec
 import hydra
 from omegaconf import DictConfig
 
@@ -53,15 +54,15 @@ def main(cfg: DictConfig) -> None:
     log.info("Affinity output shape: %s", affs.shape)
 
     log.info("Saving affinities to %s", output_zarr)
-    store = zarr.open(output_zarr, mode="w")
-    store.create_dataset(
+    store = zarr.open_group(output_zarr, mode="w")
+    arr = store.create_array(
         "affinities",
         data=affs,
         chunks=(3, 64, 64, 64),
-        compressor=zarr.Blosc(cname="zstd", clevel=3),
+        compressors=BloscCodec(cname="zstd", clevel=3),
     )
-    store["affinities"].attrs["voxel_size_um"] = 1.0
-    store["affinities"].attrs["axes"] = ["c", "x", "y", "z"]
+    arr.attrs["voxel_size_um"] = 1.0
+    arr.attrs["axes"] = ["c", "x", "y", "z"]
     log.info("Done.")
 
 

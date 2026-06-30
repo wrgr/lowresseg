@@ -7,6 +7,7 @@ import logging
 
 import numpy as np
 import zarr
+from zarr.codecs import BloscCodec
 
 from .postprocess.agglomerate import affinities_to_segmentation
 
@@ -34,7 +35,7 @@ def main() -> None:
     args = parser.parse_args()
 
     log.info("Loading affinities from %s", args.affinities_zarr)
-    store = zarr.open(args.affinities_zarr, mode="r")
+    store = zarr.open_group(args.affinities_zarr, mode="r")
     affs = store["affinities"][:]
 
     log.info("Agglomerating with method=%s threshold=%.3f", args.method, args.threshold)
@@ -48,15 +49,15 @@ def main() -> None:
     n_segments = int(seg.max())
     log.info("Segmentation shape: %s | %d segments", seg.shape, n_segments)
 
-    out = zarr.open(args.output, mode="w")
-    out.create_dataset(
+    out = zarr.open_group(args.output, mode="w")
+    arr = out.create_array(
         "seg",
         data=seg,
         chunks=(64, 64, 64),
-        compressor=zarr.Blosc(cname="zstd", clevel=3),
+        compressors=BloscCodec(cname="zstd", clevel=3),
         dtype=np.uint64,
     )
-    out["seg"].attrs["voxel_size_um"] = 1.0
+    arr.attrs["voxel_size_um"] = 1.0
     log.info("Saved to %s", args.output)
 
 
