@@ -206,17 +206,24 @@ def main() -> None:
     t0 = time.time()
     from scipy import ndimage as ndi
 
-    # Accumulate mean affinity one channel at a time to cap peak RAM.
-    # Each channel ~3.8 GB; sum accumulates in-place then divide — peak ~7.6 GB total.
-    log.info("  computing mean affinity across channels...")
-    mean_aff = np.array(aff_arr[0], dtype=np.float32)
-    for c in range(1, 3):
-        mean_aff += np.array(aff_arr[c])
-    mean_aff /= 3.0
+    # Load affinities in Z-slabs to stay within RAM budget.
+    # Peak per slab: one float32 slab (~3.8 GB / (sz/slab_z)) — well under 2 GB per slab.
+    log.info("  thresholding affinities in Z-slabs...")
+    slab_z = 64  # ~64 * 1664 * 1408 * 4 * 3 ≈ 1.6 GB per slab across 3 channels
+    binary = np.zeros((sx, sy, sz), dtype=bool)
+    vote = np.zeros((sx, sy, sz), dtype=np.uint8)  # counts channels >= threshold
 
-    log.info("  mean aff=%.3f, thresholding...", mean_aff.mean())
-    binary = mean_aff >= args.threshold
-    del mean_aff
+    for z0 in range(0, sz, slab_z):
+        z1 = min(z0 + slab_z, sz)
+        for c in range(3):
+            slab = np.array(aff_arr[c, :, :, z0:z1], dtype=np.float32)
+            vote[:, :, z0:z1] += (slab >= args.threshold).astype(np.uint8)
+            del slab
+        log.info("  slabs z=%d-%d done", z0, z1)
+
+    # Majority vote: at least 2 of 3 channels above threshold
+    binary = vote >= 2
+    del vote
 
     log.info("  running connected components...")
     seg, n_segs = ndi.label(binary)
