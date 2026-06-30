@@ -204,8 +204,6 @@ def main() -> None:
     # Agglomerate: threshold mean affinity → binary mask → connected components.
     log.info("Agglomerating via threshold+CC (threshold=%.2f)...", args.threshold)
     t0 = time.time()
-    from scipy import ndimage as ndi
-
     # Load affinities in Z-slabs to stay within RAM budget.
     # Peak per slab: one float32 slab (~3.8 GB / (sz/slab_z)) — well under 2 GB per slab.
     log.info("  thresholding affinities in Z-slabs...")
@@ -226,9 +224,10 @@ def main() -> None:
     del vote
 
     log.info("  running connected components...")
-    seg, n_segs = ndi.label(binary)
-    seg = seg.astype(np.uint64)
+    import cc3d
+    seg = cc3d.connected_components(binary, connectivity=26, out_dtype=np.uint64)
     del binary
+    n_segs = int(seg.max())
     log.info("Agglomeration done in %.1f min — %d segments", (time.time() - t0) / 60, n_segs)
     log.info("Predicted seg: shape=%s  unique IDs=%d", seg.shape, n_segs)
 
