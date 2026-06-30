@@ -99,7 +99,7 @@ def main() -> None:
     t0 = time.time()
     log.info("Downloading EM (%d tiles of %d)...",
              np.prod([int(np.ceil(s/args.tile_size)) for s in em_shape]), args.tile_size)
-    download_volume(em_vol, em_arr, tile_size=args.tile_size, dtype=np.uint8)
+    download_volume(em_vol, em_arr, tile_xy=args.tile_size, dtype=np.uint8)
     log.info("EM done in %.1f min", (time.time()-t0)/60)
 
     if args.em_only:
@@ -123,7 +123,7 @@ def main() -> None:
     t0 = time.time()
     log.info("Downloading seg (%d GB uint64)...",
              int(np.prod(seg_shape) * 8 / 1e9))
-    download_volume(seg_vol, seg_arr, tile_size=args.tile_size, dtype=np.uint64)
+    download_volume(seg_vol, seg_arr, tile_xy=args.tile_size, dtype=np.uint64)
     log.info("Seg done in %.1f min", (time.time()-t0)/60)
 
     store.attrs.update({"em_path": EM_PATH, "seg_path": SEG_PATH, "mip": MIP,
