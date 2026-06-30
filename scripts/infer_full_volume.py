@@ -194,8 +194,6 @@ def main() -> None:
     safe = np.maximum(wgt_buf[:, :, :sz - buf_z0], 1e-6)
     aff_arr[:, :, :, buf_z0:sz] = (
         aff_buf[:, :, :, :sz - buf_z0] / safe[None]).clip(0, 1)
-    ckpt_path.unlink(missing_ok=True)  # clean up on successful completion
-
     log.info("Inference done in %.1f min", (time.time() - t0) / 60)
 
     # Free EM and inference buffers before agglomeration to reclaim ~1.5 GB RAM.
@@ -263,6 +261,7 @@ def main() -> None:
     filt_arr.attrs.update({"resolution_nm": res_nm, "axes": ["x", "y", "z"],
                            "threshold": args.threshold, "min_size": args.min_size})
     log.info("Saved pred_seg_filtered to zarr")
+    ckpt_path.unlink(missing_ok=True)  # all done — safe to remove checkpoint
     log.info("Done. Run: python scripts/view_neuroglancer.py --tunnel --seg --pred-seg")
 
 
