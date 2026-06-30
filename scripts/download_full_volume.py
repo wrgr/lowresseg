@@ -32,43 +32,43 @@ MIP = 7  # ~1024 nm isotropic
 def download_volume(
     vol: cv.CloudVolume,
     out_arr: zarr.Array,
-    tile_size: int = 256,
+    tile_xy: int = 512,
     dtype=None,
 ) -> None:
-    """Tile-download a CloudVolume into a zarr array."""
+    """
+    Download a CloudVolume into a zarr array, tiling only in XY and fetching
+    full Z slabs. CloudVolume handles its own internal shard chunking; we just
+    need our request bbox to be large enough that it doesn't undercut the
+    volume's native chunk size.
+    """
     bounds = vol.bounds
-    xs, ys, zs = bounds.minpt
-    xe, ye, ze = bounds.maxpt
-    shape = out_arr.shape
+    xs, ys, zs = bounds.minpt.tolist()
+    shape = out_arr.shape  # (X, Y, Z) in zarr coords
 
-    x_tiles = range(0, shape[0], tile_size)
-    y_tiles = range(0, shape[1], tile_size)
-    z_tiles = range(0, shape[2], tile_size)
-    total = len(x_tiles) * len(y_tiles) * len(z_tiles)
+    x_tiles = list(range(0, shape[0], tile_xy))
+    y_tiles = list(range(0, shape[1], tile_xy))
+    total = len(x_tiles) * len(y_tiles)
     done = 0
 
     for xi in x_tiles:
+        xe_t = min(xi + tile_xy, shape[0])
         for yi in y_tiles:
-            for zi in z_tiles:
-                xe_t = min(xi + tile_size, shape[0])
-                ye_t = min(yi + tile_size, shape[1])
-                ze_t = min(zi + tile_size, shape[2])
+            ye_t = min(yi + tile_xy, shape[1])
 
-                # CloudVolume coords = zarr coords + bounds.minpt
-                cv_x0, cv_x1 = xs + xi, xs + xe_t
-                cv_y0, cv_y1 = ys + yi, ys + ye_t
-                cv_z0, cv_z1 = zs + zi, zs + ze_t
+            cv_x0, cv_x1 = xs + xi, xs + xe_t
+            cv_y0, cv_y1 = ys + yi, ys + ye_t
+            cv_z0, cv_z1 = zs, zs + shape[2]
 
-                chunk = np.array(vol[cv_x0:cv_x1, cv_y0:cv_y1, cv_z0:cv_z1])
-                if chunk.ndim == 4:
-                    chunk = chunk[..., 0]
-                if dtype is not None:
-                    chunk = chunk.astype(dtype)
+            slab = np.array(vol[cv_x0:cv_x1, cv_y0:cv_y1, cv_z0:cv_z1])
+            if slab.ndim == 4:
+                slab = slab[..., 0]
+            if dtype is not None:
+                slab = slab.astype(dtype)
 
-                out_arr[xi:xe_t, yi:ye_t, zi:ze_t] = chunk
-                done += 1
-                if done % 10 == 0 or done == total:
-                    log.info("  %d/%d tiles  (%.1f%%)", done, total, 100*done/total)
+            out_arr[xi:xe_t, yi:ye_t, :] = slab
+            done += 1
+            if done % max(1, total // 20) == 0 or done == total:
+                log.info("  %d/%d slabs  (%.1f%%)", done, total, 100*done/total)
 
 
 def main() -> None:
