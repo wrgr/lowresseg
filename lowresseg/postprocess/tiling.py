@@ -76,7 +76,7 @@ def tile_predict(
     def _flush(batch: list[tuple]) -> None:
         if not batch:
             return
-        xs = torch.stack([b[0] for b in batch]).to(device)
+        xs = torch.cat([b[0] for b in batch], dim=0).to(device)
         with torch.no_grad():
             preds = model(xs).cpu().numpy()
         for pred, (_, i, j, k) in zip(preds, batch):
@@ -94,7 +94,7 @@ def tile_predict(
                 # Pad if tile is smaller than patch_size
                 pad = [(0, px - tile.shape[0]), (0, py - tile.shape[1]), (0, pz - tile.shape[2])]
                 tile = np.pad(tile, pad, mode="reflect")
-                t = torch.from_numpy(tile[None, None])  # (1, 1, px, py, pz)
+                t = torch.from_numpy(tile[None, None].astype(np.float32))  # (1, 1, px, py, pz)
                 batch_inputs.append((t, i, j, k))
                 if len(batch_inputs) >= batch_size:
                     _flush(batch_inputs)
