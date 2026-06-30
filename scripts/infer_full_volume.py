@@ -12,6 +12,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import time
 from pathlib import Path
@@ -108,9 +109,20 @@ def main() -> None:
     w = _hanning_window((p, p, p))
 
     # Use a full-XY, one-Z-slab accumulator — but only p voxels deep at a time
+    # Resume checkpoint: tracks how many Z-planes have been safely flushed to zarr.
+    ckpt_path = Path(args.zarr) / "infer_checkpoint.json"
+    resume_z0 = 0
+    if ckpt_path.exists():
+        try:
+            resume_z0 = json.loads(ckpt_path.read_text()).get("flushed_z", 0)
+            log.info("Resuming from flushed_z=%d (skipping patches entirely within z<%d)",
+                     resume_z0, resume_z0)
+        except Exception:
+            pass
+
     aff_buf  = np.zeros((3, sx, sy, p), dtype=np.float32)
     wgt_buf  = np.zeros((sx, sy, p),    dtype=np.float32)
-    buf_z0   = 0   # which global Z this buffer starts at
+    buf_z0   = resume_z0
 
     t0 = time.time()
     done = 0
@@ -118,18 +130,17 @@ def main() -> None:
     # Global percentile for normalization (cheap: just sample the EM)
     lo, hi = np.percentile(em[::4, ::4, ::4], [1, 99])
 
-    def flush_buf(up_to_z: int, final: bool = False) -> None:
-        """Write buffer planes [0 .. up_to_z-buf_z0) to zarr."""
-        n = up_to_z - buf_z0
-        if n <= 0:
-            return
-        safe = np.maximum(wgt_buf[:, :, :n], 1e-6)
-        chunk = (aff_buf[:, :, :, :n] / safe[None]).clip(0, 1)
-        aff_arr[:, :, :, buf_z0:buf_z0 + n] = chunk
+    def save_checkpoint() -> None:
+        ckpt_path.write_text(json.dumps({"flushed_z": buf_z0}))
 
     for iz, kz in enumerate(starts_z):
         kze = min(kz + p, sz)
         pz  = kze - kz
+
+        # Skip Z-slabs that are entirely within already-flushed planes.
+        if kze <= resume_z0:
+            done += len(starts_x) * len(starts_y)
+            continue
 
         # Flush and roll the buffer when we move to a new Z-stride
         flush_up_to = kz + (0 if iz == 0 else ov)
@@ -144,6 +155,7 @@ def main() -> None:
             wgt_buf[:, :, :keep]    = wgt_buf[:, :, n_flush:n_flush + keep]
             wgt_buf[:, :, keep:]    = 0
             buf_z0 = flush_up_to
+            save_checkpoint()
 
         for ix, kx in enumerate(starts_x):
             kxe = min(kx + p, sx)
@@ -175,6 +187,7 @@ def main() -> None:
     safe = np.maximum(wgt_buf[:, :, :sz - buf_z0], 1e-6)
     aff_arr[:, :, :, buf_z0:sz] = (
         aff_buf[:, :, :, :sz - buf_z0] / safe[None]).clip(0, 1)
+    ckpt_path.unlink(missing_ok=True)  # clean up on successful completion
 
     log.info("Inference done in %.1f min", (time.time() - t0) / 60)
 
