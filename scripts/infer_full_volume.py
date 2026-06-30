@@ -174,10 +174,17 @@ def main() -> None:
                 with torch.no_grad():
                     pred = model(t_in.to(device)).cpu().numpy()[0]  # (3, p, p, p)
 
-                wi = w[:px_, :py_, :pz]
                 bz = kz - buf_z0
-                aff_buf[:, kx:kxe, ky:kye, bz:bz + pz] += pred[:, :px_, :py_, :pz] * wi
-                wgt_buf[   kx:kxe, ky:kye, bz:bz + pz] += wi
+                # When resuming, kz may be below buf_z0 — skip already-flushed planes.
+                z_skip = max(0, -bz)
+                bz = max(0, bz)
+                pz_w = pz - z_skip
+                if pz_w <= 0:
+                    done += 1
+                    continue
+                wi = w[:px_, :py_, z_skip:z_skip + pz_w]
+                aff_buf[:, kx:kxe, ky:kye, bz:bz + pz_w] += pred[:, :px_, :py_, z_skip:z_skip + pz_w] * wi
+                wgt_buf[   kx:kxe, ky:kye, bz:bz + pz_w] += wi
 
                 done += 1
                 if done % max(1, total // 40) == 0 or done == total:
