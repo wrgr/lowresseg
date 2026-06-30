@@ -1,0 +1,5 @@
+lowresseg.egg-info/
+__pycache__/
+*.pyc
+data/
+runs/
