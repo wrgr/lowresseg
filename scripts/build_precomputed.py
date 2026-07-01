@@ -203,40 +203,50 @@ def _encode_skeleton(vertices: np.ndarray, edges: np.ndarray) -> bytes:
 
 
 def write_skeletons(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
-                    skel_dir: Path) -> None:
-    import kimimaro
+                    skel_dir: Path, swc_dir: Path | None = None) -> None:
+    """Convert SWC files from swc_dir into neuroglancer precomputed binary skeletons."""
+    if swc_dir is None or not swc_dir.exists():
+        log.info("No SWC directory found, skipping skeletons.")
+        return
 
-    log.info("Skeletonizing %d segments with TEASAR...", len(seg_ids))
-    skels = kimimaro.skeletonize(
-        seg,
-        teasar_params={
-            "scale": 4,
-            "const": 500,
-            "pdrf_scale": 100000,
-            "pdrf_exponent": 4,
-            "soma_detection_threshold": 1100,
-            "soma_acceptance_threshold": 3500,
-            "soma_invalidation_scale": 1.0,
-            "soma_invalidation_const": 300,
-            "max_paths": None,
-        },
-        anisotropy=tuple(res_nm),
-        object_ids=seg_ids.tolist(),
-        fix_branching=True,
-        fix_borders=True,
-        progress=False,
-    )
-
+    swc_files = list(swc_dir.glob("*.swc"))
+    log.info("Converting %d SWC files to precomputed skeletons...", len(swc_files))
     written = 0
-    for sid, skel in skels.items():
-        if len(skel.vertices) == 0:
+    for swc_path in swc_files:
+        try:
+            vertices, edges = _read_swc(swc_path)
+        except Exception as e:
+            log.warning("Skipping %s: %s", swc_path.name, e)
             continue
-        # vertices in nm (kimimaro returns physical coords when anisotropy is set)
-        encoded = _encode_skeleton(skel.vertices, skel.edges)
-        (skel_dir / str(sid)).write_bytes(encoded)
+        if len(vertices) == 0:
+            continue
+        encoded = _encode_skeleton(vertices, edges)
+        (skel_dir / swc_path.stem).write_bytes(encoded)
         written += 1
 
     log.info("Wrote %d skeletons to %s", written, skel_dir)
+
+
+def _read_swc(path: Path):
+    """Parse SWC file, return (vertices_nm Nx3 float32, edges Mx2 uint32)."""
+    vertices, parents = [], {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        idx, x, y, z, parent = int(parts[0]), float(parts[2]), float(parts[3]), float(parts[4]), int(parts[6])
+        vertices.append([x, y, z])
+        parents[idx] = parent
+    if not vertices:
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((0, 2), dtype=np.uint32)
+    verts = np.array(vertices, dtype=np.float32)
+    edges = []
+    for child, parent in parents.items():
+        if parent > 0:
+            edges.append([child - 1, parent - 1])  # 0-indexed
+    edges_arr = np.array(edges, dtype=np.uint32) if edges else np.zeros((0, 2), dtype=np.uint32)
+    return verts, edges_arr
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +332,8 @@ def main() -> None:
     if not args.no_skeletons:
         skel_dir = out_dir / "skeletons"
         write_skeleton_info(skel_dir, res_nm)
-        write_skeletons(seg, seg_ids, res_nm, skel_dir)
+        zarr_swc_dir = Path(args.zarr) / "skeletons"
+        write_skeletons(seg, seg_ids, res_nm, skel_dir, swc_dir=zarr_swc_dir)
 
     log.info("Done. Serve with:")
     log.info("  python -m http.server 9191 --directory %s", out_dir)
