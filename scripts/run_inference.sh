@@ -14,6 +14,7 @@ KA_LOG="$SCRATCHPAD/keepalive.log"
 cat > "$SCRATCHPAD/keepalive.sh" << 'EOF'
 #!/bin/bash
 INFER_LOG=/tmp/infer_session/infer.log
+TICK=0
 while true; do
     ts=$(date '+%H:%M:%S')
     progress=$(tail -1 "$INFER_LOG" 2>/dev/null \
@@ -22,6 +23,18 @@ while true; do
         || echo "starting...")
     echo "$ts | $progress"
     touch data/minnie65_1um.zarr/zarr.json 2>/dev/null || true
+
+    # Commit checkpoint every 5 minutes (every 5 ticks)
+    TICK=$((TICK + 1))
+    if [ $((TICK % 5)) -eq 0 ]; then
+        CKPT=data/minnie65_1um.zarr/infer_checkpoint.json
+        if [ -f "$CKPT" ]; then
+            git add "$CKPT" 2>/dev/null && \
+            git diff --cached --quiet || \
+            git commit -m "chore: inference checkpoint $(cat $CKPT)" 2>&1 | tail -1
+        fi
+    fi
+
     sleep 60
 done
 EOF
