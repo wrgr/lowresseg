@@ -81,9 +81,7 @@ def write_seg_info(out_dir: Path, res_nm: list[int], size: list[int],
 # ---------------------------------------------------------------------------
 
 def write_scale(seg: np.ndarray, scale_info: dict, out_dir: Path) -> None:
-    from cloudvolume.datasource.precomputed.image.common import (
-        compressed_segmentation_encode,
-    )
+    import compressed_segmentation as cseg
 
     key = scale_info["key"]
     size = scale_info["size"]     # [x, y, z]
@@ -106,13 +104,11 @@ def write_scale(seg: np.ndarray, scale_info: dict, out_dir: Path) -> None:
             ye = min(y0 + cy, ys)
             for z0 in z_starts:
                 ze = min(z0 + cz, zs)
-                chunk_data = seg[x0:xe, y0:ye, z0:ze]
+                chunk_data = seg[x0:xe, y0:ye, z0:ze].astype(np.uint32)
                 # Pad to full chunk size (required by compressed_segmentation encoder)
                 pad = [(0, cx - (xe - x0)), (0, cy - (ye - y0)), (0, cz - (ze - z0))]
                 chunk_data = np.pad(chunk_data, pad, mode="constant")
-                # cloud-volume encoder expects (x, y, z, c) C-order, uint64
-                chunk_4d = chunk_data[:, :, :, np.newaxis]
-                encoded = compressed_segmentation_encode(chunk_4d)
+                encoded = cseg.compress(chunk_data, order='C')
                 fname = scale_dir / f"{x0}-{xe}_{y0}-{ye}_{z0}-{ze}"
                 fname.write_bytes(encoded)
                 done += 1
