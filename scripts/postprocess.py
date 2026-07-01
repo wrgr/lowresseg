@@ -146,6 +146,9 @@ def main() -> None:
                         help="Process only the N largest segments (useful for testing)")
     parser.add_argument("--min-size", type=int, default=100,
                         help="Skip segments smaller than this many voxels")
+    parser.add_argument("--max-size", type=int, default=2_000_000,
+                        help="Skip segments larger than this many voxels — likely merge errors "
+                             "(default 2M voxels ≈ 2000 µm³ at 1µm iso)")
     parser.add_argument("--no-skeletons", action="store_true")
     parser.add_argument("--no-meshes", action="store_true")
     args = parser.parse_args()
@@ -178,16 +181,20 @@ def main() -> None:
 
     seg_ids = np.array(sorted(counts_map.keys()), dtype=np.uint64)
     counts = np.array([counts_map[int(i)] for i in seg_ids], dtype=np.int64)
-    mask = counts >= args.min_size
+    mask = (counts >= args.min_size) & (counts <= args.max_size)
+    n_merge_errors = int((counts > args.max_size).sum())
     seg_ids, counts = seg_ids[mask], counts[mask]
+
+    if n_merge_errors:
+        log.info("Skipped %d likely merge errors (>%d voxels)", n_merge_errors, args.max_size)
 
     if args.max_segments is not None:
         order = np.argsort(counts)[::-1][: args.max_segments]
         seg_ids = seg_ids[order]
         counts = counts[order]
 
-    log.info("Processing %d segments (min_size=%d, largest=%d voxels)",
-             len(seg_ids), args.min_size, int(counts.max()) if len(counts) else 0)
+    log.info("Processing %d segments (min_size=%d, max_size=%d, largest=%d voxels)",
+             len(seg_ids), args.min_size, args.max_size, int(counts.max()) if len(counts) else 0)
 
     skel_dir = store_path / "skeletons"
     mesh_dir = store_path / "meshes"
