@@ -114,7 +114,8 @@ def mesh(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
         mesher = zmesh.Mesher(tuple(res_nm))
         mesher.mesh(crop)
         m = mesher.get(int(seg_id), normals=False)
-        mesher.erase_buffer()
+        if hasattr(mesher, 'erase_buffer'):
+            mesher.erase_buffer()
         if m is None or len(m.vertices) == 0:
             continue
         # Shift vertices to global nm coordinates
