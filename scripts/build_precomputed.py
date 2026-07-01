@@ -270,11 +270,25 @@ def main() -> None:
 
     seg_arr = store[args.seg]
     res_nm = list(seg_arr.attrs.get("resolution_nm", [1024, 1024, 1280]))
-    log.info("Loading %s %s...", args.seg, seg_arr.shape)
-    seg = np.array(seg_arr)
+    sx, sy, sz = seg_arr.shape
 
-    seg_ids, counts = np.unique(seg, return_counts=True)
-    mask = (seg_ids != 0) & (counts >= args.min_size)
+    # Count via Z-slabs to avoid double-loading the full volume
+    from collections import Counter
+    counts_map: Counter = Counter()
+    log.info("Counting segments in %s via Z-slabs...", args.seg)
+    slab = 32
+    for z0 in range(0, sz, slab):
+        z1 = min(z0 + slab, sz)
+        chunk_data = np.array(seg_arr[:, :, z0:z1])
+        ids, cnts = np.unique(chunk_data, return_counts=True)
+        for i, c in zip(ids, cnts):
+            counts_map[int(i)] += int(c)
+        del chunk_data
+    counts_map.pop(0, None)
+
+    seg_ids = np.array(sorted(counts_map.keys()), dtype=np.uint64)
+    counts = np.array([counts_map[int(i)] for i in seg_ids], dtype=np.int64)
+    mask = counts >= args.min_size
     seg_ids, counts = seg_ids[mask], counts[mask]
     if args.max_segments:
         order = np.argsort(counts)[::-1][: args.max_segments]
@@ -282,9 +296,11 @@ def main() -> None:
     log.info("%d segments to process (largest=%d voxels)",
              len(seg_ids), counts.max() if len(counts) else 0)
 
+    log.info("Loading %s %s...", args.seg, seg_arr.shape)
+    seg = np.array(seg_arr).astype(np.uint32)
+
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    sx, sy, sz = seg.shape
     chunk = [args.chunk] * 3
 
     # --- Segmentation pyramid ---
