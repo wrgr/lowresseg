@@ -1,0 +1,22 @@
+Metadata-Version: 2.4
+Name: lowresseg
+Version: 0.1.0
+Summary: Low-resolution (~1µm) neuron segmentation for large EM volumes
+Requires-Python: >=3.10
+Requires-Dist: torch>=2.2
+Requires-Dist: torchvision
+Requires-Dist: monai>=1.3
+Requires-Dist: cloud-volume>=8.0
+Requires-Dist: zarr>=2.17
+Requires-Dist: numpy>=1.26
+Requires-Dist: scipy>=1.12
+Requires-Dist: scikit-image>=0.22
+Requires-Dist: tensorboard
+Requires-Dist: tqdm
+Requires-Dist: einops
+Requires-Dist: connected-components-3d
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: ipykernel; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"

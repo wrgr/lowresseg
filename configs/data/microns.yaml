@@ -1,0 +1,26 @@
+# MICrONS minnie65 phase3 public dataset
+# EM at 8nm native, mip6 = ~512nm, mip7 = ~1024nm (1µm)
+em_path: "precomputed://gs://iarpa_microns/minnie/minnie65/em"
+seg_path: "precomputed://gs://iarpa_microns/minnie/minnie65/seg/minnie65_8"
+
+# MIP level corresponding to ~1µm
+# minnie65 em: mip0=8nm, each mip 2x -> mip7=1024nm
+em_mip: 7
+seg_mip: 4   # seg has fewer mip levels; adjust after inspecting volume info
+
+# Bounding box (in mip0 voxels, CloudVolume converts)
+# Full volume approximately: x 17920-888320, y 14848-630784, z 16-30592 (8nm)
+# Subset for initial experiments (~256µm cube at 1µm)
+bbox_start: [193536, 130048, 15]   # mip0 voxels (will be scaled per mip)
+bbox_end:   [456192, 392704, 2047]  # covers ~full minnie65 z-range at 1µm
+
+# Patch size for training (voxels at 1µm)
+patch_size: [128, 128, 128]
+# Overlap for inference tiling
+tile_overlap: [32, 32, 32]
+
+# Normalisation
+clip_percentile: [1.0, 99.0]
+
+# Local cache directory for downloaded chunks
+cache_dir: "data/cache/microns"

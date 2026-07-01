@@ -1,0 +1,8 @@
+lowresseg.egg-info/
+__pycache__/
+*.pyc
+data/
+!data/minnie65_1um.zarr/infer_checkpoint.json
+runs/
+data/minnie65_precomputed/
+.env

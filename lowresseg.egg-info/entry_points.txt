@@ -1,0 +1,5 @@
+[console_scripts]
+lowresseg-eval = lowresseg.evaluate:main
+lowresseg-predict = lowresseg.predict:main
+lowresseg-segment = lowresseg.segment:main
+lowresseg-train = lowresseg.train:main
