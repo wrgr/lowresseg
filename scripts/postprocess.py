@@ -30,36 +30,49 @@ def skeletonize(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
                 out_dir: Path) -> None:
     import kimimaro
 
-    log.info("Skeletonizing %d segments with TEASAR...", len(seg_ids))
-    # TEASAR scale/const are tuned for ~1µm resolution (units: nm).
-    # scale=4 → 4× cross-section radius; const=500nm minimum radius.
-    skels = kimimaro.skeletonize(
-        seg,
-        teasar_params={
-            "scale": 4,
-            "const": 500,          # nm
-            "pdrf_scale": 100000,
-            "pdrf_exponent": 4,
-            "soma_detection_threshold": 1100,
-            "soma_acceptance_threshold": 3500,
-            "soma_invalidation_scale": 1.0,
-            "soma_invalidation_const": 300,
-            "max_paths": None,
-        },
-        anisotropy=tuple(res_nm),  # voxel size in nm (x, y, z)
-        object_ids=seg_ids.tolist(),
-        fix_branching=True,
-        fix_borders=True,
-        progress=False,
-    )
-
     out_dir.mkdir(parents=True, exist_ok=True)
+    log.info("Skeletonizing %d segments one-by-one (bbox crop to save RAM)...", len(seg_ids))
+
+    teasar_params = {
+        "scale": 4,
+        "const": 500,
+        "pdrf_scale": 100000,
+        "pdrf_exponent": 4,
+        "soma_detection_threshold": 1100,
+        "soma_acceptance_threshold": 3500,
+        "soma_invalidation_scale": 1.0,
+        "soma_invalidation_const": 300,
+        "max_paths": None,
+    }
+
     n_written = 0
-    for seg_id, skel in skels.items():
-        if len(skel.vertices) == 0:
+    PAD = 2  # voxel padding around bbox so TEASAR border-fixing works
+    for i, seg_id in enumerate(seg_ids):
+        if i % 50 == 0:
+            log.info("  skeletonizing %d/%d...", i, len(seg_ids))
+        # Tight bounding box for this segment
+        mask = np.where(seg == seg_id)
+        if len(mask[0]) == 0:
             continue
-        swc_path = out_dir / f"{seg_id}.swc"
-        _write_swc(skel, swc_path)
+        x0, x1 = max(mask[0].min() - PAD, 0), min(mask[0].max() + PAD + 1, seg.shape[0])
+        y0, y1 = max(mask[1].min() - PAD, 0), min(mask[1].max() + PAD + 1, seg.shape[1])
+        z0, z1 = max(mask[2].min() - PAD, 0), min(mask[2].max() + PAD + 1, seg.shape[2])
+
+        crop = seg[x0:x1, y0:y1, z0:z1]
+        skels = kimimaro.skeletonize(
+            crop, teasar_params=teasar_params,
+            anisotropy=tuple(res_nm),
+            object_ids=[int(seg_id)],
+            fix_branching=True, fix_borders=True, progress=False,
+        )
+        skel = skels.get(int(seg_id))
+        if skel is None or len(skel.vertices) == 0:
+            continue
+        # Shift vertices back to global coordinates (nm)
+        skel.vertices[:, 0] += x0 * res_nm[0]
+        skel.vertices[:, 1] += y0 * res_nm[1]
+        skel.vertices[:, 2] += z0 * res_nm[2]
+        _write_swc(skel, out_dir / f"{seg_id}.swc")
         n_written += 1
 
     log.info("Wrote %d skeleton SWC files to %s", n_written, out_dir)
@@ -82,22 +95,35 @@ def mesh(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
          out_dir: Path) -> None:
     import zmesh
 
-    log.info("Meshing %d segments...", len(seg_ids))
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    mesher = zmesh.Mesher(tuple(res_nm))  # voxel → nm scaling
-    mesher.mesh(seg if seg.dtype == np.uint32 else seg.astype(np.uint32))
+    log.info("Meshing %d segments one-by-one (bbox crop to save RAM)...", len(seg_ids))
 
     n_written = 0
-    for seg_id in seg_ids:
+    PAD = 1
+    for i, seg_id in enumerate(seg_ids):
+        if i % 50 == 0:
+            log.info("  meshing %d/%d...", i, len(seg_ids))
+        mask = np.where(seg == seg_id)
+        if len(mask[0]) == 0:
+            continue
+        x0, x1 = max(mask[0].min() - PAD, 0), min(mask[0].max() + PAD + 1, seg.shape[0])
+        y0, y1 = max(mask[1].min() - PAD, 0), min(mask[1].max() + PAD + 1, seg.shape[1])
+        z0, z1 = max(mask[2].min() - PAD, 0), min(mask[2].max() + PAD + 1, seg.shape[2])
+
+        crop = seg[x0:x1, y0:y1, z0:z1]
+        mesher = zmesh.Mesher(tuple(res_nm))
+        mesher.mesh(crop)
         m = mesher.get(int(seg_id), normals=False)
+        mesher.erase_buffer()
         if m is None or len(m.vertices) == 0:
             continue
-        obj_path = out_dir / f"{seg_id}.obj"
-        _write_obj(m, obj_path)
+        # Shift vertices to global nm coordinates
+        m.vertices[:, 0] += x0 * res_nm[0]
+        m.vertices[:, 1] += y0 * res_nm[1]
+        m.vertices[:, 2] += z0 * res_nm[2]
+        _write_obj(m, out_dir / f"{seg_id}.obj")
         n_written += 1
 
-    mesher.erase_buffer()
     log.info("Wrote %d mesh OBJ files to %s", n_written, out_dir)
 
 
