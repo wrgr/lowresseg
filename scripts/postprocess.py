@@ -86,7 +86,7 @@ def mesh(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
     out_dir.mkdir(parents=True, exist_ok=True)
 
     mesher = zmesh.Mesher(tuple(res_nm))  # voxel → nm scaling
-    mesher.mesh(seg.astype(np.uint32))    # zmesh takes uint32
+    mesher.mesh(seg if seg.dtype == np.uint32 else seg.astype(np.uint32))
 
     n_written = 0
     for seg_id in seg_ids:
@@ -134,25 +134,42 @@ def main() -> None:
 
     seg_arr = store[args.seg]
     res_nm = list(seg_arr.attrs.get("resolution_nm", [1024, 1024, 1280]))
-    log.info("Loading %s (shape=%s)...", args.seg, seg_arr.shape)
-    seg = np.array(seg_arr)
+    sx, sy, sz = seg_arr.shape
+    log.info("Counting segments in %s (shape=%s) via Z-slabs to save RAM...", args.seg, seg_arr.shape)
 
-    seg_ids, counts = np.unique(seg, return_counts=True)
-    # Drop background (ID 0) and small fragments
-    mask = (seg_ids != 0) & (counts >= args.min_size)
+    # Count segment sizes without loading full volume
+    from collections import Counter
+    counts_map: Counter = Counter()
+    slab = 32
+    for z0 in range(0, sz, slab):
+        z1 = min(z0 + slab, sz)
+        chunk = np.array(seg_arr[:, :, z0:z1])
+        ids, cnts = np.unique(chunk, return_counts=True)
+        for i, c in zip(ids, cnts):
+            counts_map[int(i)] += int(c)
+        del chunk
+    counts_map.pop(0, None)  # remove background
+
+    seg_ids = np.array(sorted(counts_map.keys()), dtype=np.uint64)
+    counts = np.array([counts_map[int(i)] for i in seg_ids], dtype=np.int64)
+    mask = counts >= args.min_size
     seg_ids, counts = seg_ids[mask], counts[mask]
 
     if args.max_segments is not None:
-        # Keep the N largest
         order = np.argsort(counts)[::-1][: args.max_segments]
         seg_ids = seg_ids[order]
         counts = counts[order]
 
     log.info("Processing %d segments (min_size=%d, largest=%d voxels)",
-             len(seg_ids), args.min_size, counts.max() if len(counts) else 0)
+             len(seg_ids), args.min_size, int(counts.max()) if len(counts) else 0)
 
     skel_dir = store_path / "skeletons"
     mesh_dir = store_path / "meshes"
+
+    # Load full volume — uint32 to save RAM (1664×1408×409×4 ≈ 3.8 GB)
+    log.info("Loading full seg array (~%.1f GB)...", sx * sy * sz * 4 / 1e9)
+    seg = np.array(seg_arr).astype(np.uint32)
+    del seg_arr  # free zarr reference
 
     if not args.no_skeletons:
         skeletonize(seg, seg_ids, res_nm, skel_dir)
