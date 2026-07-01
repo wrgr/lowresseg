@@ -153,7 +153,7 @@ def main() -> None:
                         help="Which seg array to process (pred_seg or pred_seg_filtered)")
     parser.add_argument("--max-segments", type=int, default=None,
                         help="Process only the N largest segments (useful for testing)")
-    parser.add_argument("--min-size", type=int, default=100,
+    parser.add_argument("--min-size", type=int, default=300,
                         help="Skip segments smaller than this many voxels")
     parser.add_argument("--max-size", type=int, default=2_000_000,
                         help="Skip segments larger than this many voxels — likely merge errors "
