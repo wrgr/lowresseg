@@ -24,14 +24,19 @@ while true; do
     echo "$ts | $progress"
     touch data/minnie65_1um.zarr/zarr.json 2>/dev/null || true
 
-    # Commit checkpoint every 5 minutes (every 5 ticks)
+    # Commit progress every 5 minutes (every 5 ticks)
     TICK=$((TICK + 1))
     if [ $((TICK % 5)) -eq 0 ]; then
         CKPT=data/minnie65_1um.zarr/infer_checkpoint.json
+        SKELS=$(ls data/minnie65_1um.zarr/skeletons/*.swc 2>/dev/null | wc -l)
+        MESHES=$(ls data/minnie65_1um.zarr/meshes/*.obj 2>/dev/null | wc -l)
         if [ -f "$CKPT" ]; then
             git add "$CKPT" 2>/dev/null && \
             git diff --cached --quiet || \
-            git commit -m "chore: inference checkpoint $(cat $CKPT)" 2>&1 | tail -1
+            git commit -m "chore: infer checkpoint $(cat $CKPT)" 2>&1 | tail -1
+        fi
+        if [ "$SKELS" -gt 0 ] || [ "$MESHES" -gt 0 ]; then
+            echo "$ts | skels=$SKELS meshes=$MESHES"
         fi
     fi
 

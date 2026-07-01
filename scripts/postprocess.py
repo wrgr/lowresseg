@@ -50,12 +50,16 @@ def skeletonize(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
         "max_paths": None,
     }
 
-    log.info("Skeletonizing %d segments (downsample=%dx, coarse TEASAR)...", len(seg_ids), downsample)
+    already = {int(p.stem) for p in out_dir.glob("*.swc")} if out_dir.exists() else set()
+    todo = [s for s in seg_ids if int(s) not in already]
+    if already:
+        log.info("Resuming: %d already done, %d remaining", len(already), len(todo))
+    log.info("Skeletonizing %d segments (downsample=%dx, coarse TEASAR)...", len(todo), downsample)
     n_written = 0
     PAD = 2
-    for i, seg_id in enumerate(seg_ids):
+    for i, seg_id in enumerate(todo):
         if i % 50 == 0:
-            log.info("  skeletonizing %d/%d...", i, len(seg_ids))
+            log.info("  skeletonizing %d/%d...", i, len(todo))
         mask = np.where(seg == seg_id)
         if len(mask[0]) == 0:
             continue
@@ -104,13 +108,17 @@ def mesh(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
     import zmesh
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    log.info("Meshing %d segments one-by-one (bbox crop to save RAM)...", len(seg_ids))
+    already = {int(p.stem) for p in out_dir.glob("*.obj")}
+    todo = [s for s in seg_ids if int(s) not in already]
+    if already:
+        log.info("Resuming: %d already done, %d remaining", len(already), len(todo))
+    log.info("Meshing %d segments one-by-one (bbox crop to save RAM)...", len(todo))
 
     n_written = 0
     PAD = 1
-    for i, seg_id in enumerate(seg_ids):
+    for i, seg_id in enumerate(todo):
         if i % 50 == 0:
-            log.info("  meshing %d/%d...", i, len(seg_ids))
+            log.info("  meshing %d/%d...", i, len(todo))
         mask = np.where(seg == seg_id)
         if len(mask[0]) == 0:
             continue
