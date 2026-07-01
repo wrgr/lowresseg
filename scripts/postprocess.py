@@ -27,15 +27,20 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
 
 def skeletonize(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
-                out_dir: Path) -> None:
+                out_dir: Path, downsample: int = 2) -> None:
+    """Skeletonize segments with coarse TEASAR params tuned for 1µm resolution.
+
+    downsample: factor to downsample crops before TEASAR (2 = 2× faster, fewer nodes).
+    """
     import kimimaro
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    log.info("Skeletonizing %d segments one-by-one (bbox crop to save RAM)...", len(seg_ids))
+    eff_res = [r * downsample for r in res_nm]  # effective resolution after downsampling
 
+    # Coarse params for 1µm data — scale=10/const=2000nm gives ~50-150 nodes per fragment
     teasar_params = {
-        "scale": 4,
-        "const": 500,
+        "scale": 10,
+        "const": 2000,        # nm — minimum invalidation radius
         "pdrf_scale": 100000,
         "pdrf_exponent": 4,
         "soma_detection_threshold": 1100,
@@ -45,30 +50,33 @@ def skeletonize(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
         "max_paths": None,
     }
 
+    log.info("Skeletonizing %d segments (downsample=%dx, coarse TEASAR)...", len(seg_ids), downsample)
     n_written = 0
-    PAD = 2  # voxel padding around bbox so TEASAR border-fixing works
+    PAD = 2
     for i, seg_id in enumerate(seg_ids):
         if i % 50 == 0:
             log.info("  skeletonizing %d/%d...", i, len(seg_ids))
-        # Tight bounding box for this segment
         mask = np.where(seg == seg_id)
         if len(mask[0]) == 0:
             continue
-        x0, x1 = max(mask[0].min() - PAD, 0), min(mask[0].max() + PAD + 1, seg.shape[0])
-        y0, y1 = max(mask[1].min() - PAD, 0), min(mask[1].max() + PAD + 1, seg.shape[1])
-        z0, z1 = max(mask[2].min() - PAD, 0), min(mask[2].max() + PAD + 1, seg.shape[2])
+        x0 = max(mask[0].min() - PAD, 0); x1 = min(mask[0].max() + PAD + 1, seg.shape[0])
+        y0 = max(mask[1].min() - PAD, 0); y1 = min(mask[1].max() + PAD + 1, seg.shape[1])
+        z0 = max(mask[2].min() - PAD, 0); z1 = min(mask[2].max() + PAD + 1, seg.shape[2])
 
         crop = seg[x0:x1, y0:y1, z0:z1]
+        if downsample > 1:
+            crop = crop[::downsample, ::downsample, ::downsample]
+
         skels = kimimaro.skeletonize(
             crop, teasar_params=teasar_params,
-            anisotropy=tuple(res_nm),
+            anisotropy=tuple(eff_res),
             object_ids=[int(seg_id)],
             fix_branching=True, fix_borders=True, progress=False,
         )
         skel = skels.get(int(seg_id))
         if skel is None or len(skel.vertices) == 0:
             continue
-        # Shift vertices back to global coordinates (nm)
+        # Shift vertices to global nm coordinates (eff_res already baked in by kimimaro)
         skel.vertices[:, 0] += x0 * res_nm[0]
         skel.vertices[:, 1] += y0 * res_nm[1]
         skel.vertices[:, 2] += z0 * res_nm[2]
@@ -150,6 +158,8 @@ def main() -> None:
     parser.add_argument("--max-size", type=int, default=2_000_000,
                         help="Skip segments larger than this many voxels — likely merge errors "
                              "(default 2M voxels ≈ 2000 µm³ at 1µm iso)")
+    parser.add_argument("--downsample", type=int, default=2,
+                        help="Downsample factor for skeletonization crops (default 2 = 2× faster, fewer nodes)")
     parser.add_argument("--no-skeletons", action="store_true")
     parser.add_argument("--no-meshes", action="store_true")
     args = parser.parse_args()
@@ -206,7 +216,7 @@ def main() -> None:
     del seg_arr  # free zarr reference
 
     if not args.no_skeletons:
-        skeletonize(seg, seg_ids, res_nm, skel_dir)
+        skeletonize(seg, seg_ids, res_nm, skel_dir, downsample=args.downsample)
 
     if not args.no_meshes:
         mesh(seg, seg_ids, res_nm, mesh_dir)
