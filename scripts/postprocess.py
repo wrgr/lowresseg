@@ -58,8 +58,7 @@ def skeletonize(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
     n_written = 0
     PAD = 2
     for i, seg_id in enumerate(todo):
-        if i % 50 == 0:
-            log.info("  skeletonizing %d/%d...", i, len(todo))
+        log.info("  skeletonizing %d/%d (id=%d)...", i + 1, len(todo), seg_id)
         mask = np.where(seg == seg_id)
         if len(mask[0]) == 0:
             continue
@@ -117,8 +116,7 @@ def mesh(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
     n_written = 0
     PAD = 1
     for i, seg_id in enumerate(todo):
-        if i % 50 == 0:
-            log.info("  meshing %d/%d...", i, len(todo))
+        log.info("  meshing %d/%d (id=%d)...", i + 1, len(todo), seg_id)
         mask = np.where(seg == seg_id)
         if len(mask[0]) == 0:
             continue
