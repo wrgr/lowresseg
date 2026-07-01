@@ -167,7 +167,8 @@ def write_meshes(seg: np.ndarray, seg_ids: np.ndarray, res_nm: list[int],
         (mesh_dir / f"{sid}:0").write_bytes(encoded)
         written += 1
 
-    mesher.erase_buffer()
+    if hasattr(mesher, 'erase_buffer'):
+            mesher.erase_buffer()
     log.info("Wrote %d mesh fragments to %s", written, mesh_dir)
 
 
